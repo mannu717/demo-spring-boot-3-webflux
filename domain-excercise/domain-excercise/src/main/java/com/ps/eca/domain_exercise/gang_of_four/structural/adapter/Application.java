@@ -1,6 +1,6 @@
 package com.ps.eca.domain_exercise.gang_of_four.structural.adapter;
 
-public class User {
+public class Application {
     public static void main(String[] args) {
         // Incompatible audio devices
         Headphones headphones = new Headphones();
