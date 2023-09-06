@@ -1,0 +1,54 @@
+pipeline {
+    agent any
+    environment {
+        gitUrl = "https://pscode.lioncloud.net/apartment-service-management-solution/user-management-service"
+        branch = "*/main"
+        tag = "${BUILD_NUMBER}"
+        region = "us-east-1"
+        accountId = "353645754245"
+        ecr = "\"$accountId\".dkr.ecr.\"$region\".amazonaws.com"
+        image = "asmr/user-management-service"
+        cluster = "asms-cluster"
+        nameSpace = "asms-deployment"
+        release = "first-ums"
+        chart = "user-management-service-chart"
+    }
+    stages {
+        stage('Checkout') {
+            steps {
+               checkout changelog: false, poll: false, scm: scmGit(branches: [[name: "$branch"]], extensions: [], userRemoteConfigs: [[credentialsId: 'Token', url: "$gitUrl"]])
+            }
+        }
+        stage('Build Jar') {
+            steps {
+               sh "mvn clean install"
+            }
+        }
+        stage('Build Docker Image') {
+            steps {
+               sh "docker build -t $image:$tag ."
+            }
+        }
+        stage('Push Docker Image') {
+            steps {
+                sh "aws ecr get-login-password --region $region | docker login --username AWS --password-stdin $ecr"
+                sh "docker tag $image:$tag $ecr/$image:$tag"
+                sh "docker image prune -f"
+                sh "docker push $ecr/$image:$tag"
+            }
+        }
+        stage('Helm Deploy') {
+            steps {
+                script {
+                    sh "aws eks update-kubeconfig --name $cluster --region $region"
+                    sh "kubectl apply -f ./secret/secret.yaml -n $nameSpace"
+                    sh "kubectl get ns | grep -q \"^$nameSpace \" || kubectl create ns $nameSpace"
+                    sh "helm upgrade $release --install $chart --namespace $nameSpace --set image.tag=$tag"
+                    sh "kubectl get --namespace $nameSpace svc $release-$chart"
+                    // sh "helm uninstall -n $nameSpace $release"
+                    // helm uninstall -n cs-deployment first
+                }
+            }
+        }
+    }
+}
