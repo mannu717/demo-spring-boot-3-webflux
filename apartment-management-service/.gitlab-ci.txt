@@ -1,0 +1,72 @@
+image: docker:stable
+
+services:
+  - docker:stable-dind
+
+variables:
+  CI_REGISTRY_IMAGE: asmr/apartment-management-service
+  AWS_DEFAULT_REGION: $AWS_REGION
+  DOCKER_REGISTRY: $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
+  ENVIRONMENT: dev
+
+stages:
+  - build
+  - docker
+  - deploy
+
+default:
+  tags:
+    - $ENVIRONMENT
+
+build:
+  stage: build
+  image: maven:latest
+  script:
+    - mvn clean install
+  artifacts:
+    paths:
+      - target/*.jar
+    expire_in: 1 week
+
+docker-build-publish:
+  stage: docker
+  image:
+    name: amazon/aws-cli
+    entrypoint: [ "" ]
+  before_script:
+    - amazon-linux-extras install docker
+    - aws --version
+    - docker --version
+    - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $DOCKER_REGISTRY
+  script:
+    - echo "Docker build application.."
+    - docker pull $DOCKER_REGISTRY/$CI_REGISTRY_IMAGE:latest || true
+    - docker build --cache-from $CI_REGISTRY_IMAGE:latest --tag $CI_REGISTRY_IMAGE:$CI_PIPELINE_IID --tag $CI_REGISTRY_IMAGE:latest .
+    - docker tag $CI_REGISTRY_IMAGE:$CI_PIPELINE_IID $DOCKER_REGISTRY/$CI_REGISTRY_IMAGE:$CI_PIPELINE_IID
+    - docker tag $CI_REGISTRY_IMAGE:latest $DOCKER_REGISTRY/$CI_REGISTRY_IMAGE:latest
+    - docker push $DOCKER_REGISTRY/$CI_REGISTRY_IMAGE:$CI_PIPELINE_IID
+    - docker push $DOCKER_REGISTRY/$CI_REGISTRY_IMAGE:latest
+    - echo "Docker build complete..."
+  # Run this job in a branch where a Dockerfile exists
+  rules:
+    - if: $CI_COMMIT_BRANCH
+      exists:
+        - Dockerfile
+  when:
+    manual
+service-deploy:
+  stage: deploy
+  image:
+    name: amazon/aws-cli
+    entrypoint: [ "" ]
+  before_script:
+    - aws --version
+  script:
+    - echo "Deploying service..."
+    - aws ecs update-service --cluster asms-cluster --service asms-app-service --force-new-deployment
+    - echo "Deployment complete..."
+  when:
+    manual

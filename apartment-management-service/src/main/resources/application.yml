@@ -1,0 +1,19 @@
+server:
+  port: 8080
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: always
+amazon:
+  dynamodb:
+    endpoint: dynamodb.us-east-1.amazonaws.com
+  aws:
+    accesskey: ${ACCESS_KEY}
+    secretkey: ${SECRET_KEY}
+
+application-description: @project.description@
+application-version: @project.version@

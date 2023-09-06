@@ -1,0 +1,8 @@
+version: "3.8"
+services:
+  app:
+    image: asmr/apartment-management-service
+    build:
+      context: .
+    ports:
+      - 80:8080
