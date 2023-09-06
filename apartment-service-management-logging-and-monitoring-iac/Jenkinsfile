@@ -1,0 +1,53 @@
+pipeline {
+    agent any
+    environment {
+        gitUrl = "https://pscode.lioncloud.net/apartment-service-management-solution/apartment-service-management-logging-and-monitoring-iac"
+        branch = "*/main"
+        region = "us-east-1"
+        cluster = "asms-cluster"
+        namespace = "elk"
+    }
+    stages {
+        stage('Checkout') {
+            steps {
+               checkout changelog: false, poll: false, scm: scmGit(branches: [[name: "$branch"]], extensions: [], userRemoteConfigs: [[credentialsId: 'Token', url: "$gitUrl"]])
+            }
+        }
+        stage('Create NameSpace') {
+            steps {
+                sh "aws eks update-kubeconfig --name $cluster --region $region"
+                sh "kubectl get ns | grep -q \"^$namespace \" || kubectl create ns $namespace"
+                sh "kubectl get ns"
+                sh "helm repo add elastic https://helm.elastic.co --force-update"
+                sh "helm repo ls"
+            }
+        }
+        stage('Deploy ElasticSearch') {
+            steps {
+                sh "pwd"
+                // sh "helm install elasticsearch elastic/elasticsearch -f elasticsearch.values -n $namespace"
+                sh "helm upgrade elasticsearch --install elastic/elasticsearch -f elasticsearch.values -n $namespace"
+                sh "helm ls -n $namespace"
+                sh "kubectl get all -n $namespace"
+            }
+        }
+        stage('Deploy Kibana') {
+            steps {
+                sh "pwd"
+                // sh "helm install kibana elastic/kibana -f kibana.values -n $namespace"
+                sh "helm upgrade kibana --install elastic/kibana -f kibana.values -n $namespace --timeout 10m30s"
+                sh "helm ls -n $namespace"
+                sh "kubectl get all -n $namespace"
+            }
+        }
+        stage('Deploy Filebeat') {
+            steps {
+                sh "pwd"
+                // sh "helm install filebeat elastic/filebeat -n $namespace"
+                sh "helm upgrade filebeat --install elastic/filebeat -n $namespace"
+                sh "helm ls -n $namespace"
+                sh "kubectl get all -n $namespace"
+            }
+        }
+    }
+}
